@@ -37,8 +37,17 @@ if(ENABLE_QT)
   )
 endif()
 
+# Set header file include paths
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Configure plugin-support.c file
+configure_file(src/plugin-support.c.in src/plugin-support.c @ONLY)
+
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE 
   src/plugin-main.cpp
+  src/plugin-support.c
   src/ttoutput-dock.cpp
   src/ttoutput-manager.cpp
   src/ttoutput-config.cpp
