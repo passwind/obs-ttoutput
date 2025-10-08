@@ -1,6 +1,24 @@
 #pragma once
 
 #include "ttoutput-plugin.h"
+#include <QThread>
+#include <QMutex>
+#include <QAtomicInt>
+
+// Worker thread for async output operations
+class TTOutputWorker : public QObject
+{
+    Q_OBJECT
+
+public slots:
+    void startOutput(ttoutput_config_t *config);
+    void stopOutput(ttoutput_config_t *config);
+
+signals:
+    void outputStarted(bool success);
+    void outputStopped();
+    void progressUpdate(const QString &message, int progress);
+};
 
 class TTOutputDock : public QWidget
 {
@@ -20,6 +38,11 @@ private slots:
     void onBrowseFileClicked();
     void onRefreshSourcesClicked();
     void onDeleteConfigClicked();
+    
+    // Async operation slots
+    void onOutputStarted(bool success);
+    void onOutputStopped();
+    void onProgressUpdate(const QString &message, int progress);
 
 private:
     void setupUI();
@@ -92,4 +115,12 @@ private:
     ttoutput_config_t *m_currentConfig;
     QTimer *m_statusTimer;
     bool m_isOutputActive;
+    
+    // Async operation support
+    QThread *m_workerThread;
+    TTOutputWorker *m_worker;
+    QMutex m_configMutex;
+    QAtomicInt m_isStarting;
+    QAtomicInt m_isStopping;
+    ttoutput_config_t *m_pendingConfig;
 };

@@ -12,17 +12,71 @@
 #include <QFileDialog>
 #include <QDir>
 #include <QMessageBox>
+#include <QThread>
+#include <QMutexLocker>
 #include <chrono>
+
+// TTOutputWorker implementation
+void TTOutputWorker::startOutput(ttoutput_config_t *config)
+{
+    if (!config) {
+        emit outputStarted(false);
+        return;
+    }
+    
+    emit progressUpdate("Initializing output...", 10);
+    
+    // This is the blocking operation that was causing UI freeze
+    bool success = ttoutput_start_output(config);
+    
+    emit progressUpdate(success ? "Output started successfully" : "Failed to start output", 100);
+    emit outputStarted(success);
+}
+
+void TTOutputWorker::stopOutput(ttoutput_config_t *config)
+{
+    if (!config) {
+        emit outputStopped();
+        return;
+    }
+    
+    emit progressUpdate("Stopping output...", 50);
+    
+    bool success = ttoutput_stop_output(config);
+    
+    emit progressUpdate(success ? "Output stopped successfully" : "Failed to stop output", 100);
+    emit outputStopped();
+}
 
 TTOutputDock::TTOutputDock(QWidget *parent)
     : QWidget(parent)
     , m_currentConfig(nullptr)
     , m_statusTimer(new QTimer(this))
     , m_isOutputActive(false)
+    , m_workerThread(nullptr)
+    , m_worker(nullptr)
+    , m_isStarting(0)
+    , m_isStopping(0)
+    , m_pendingConfig(nullptr)
 {
     setObjectName("TTOutputDock");
     setWindowTitle("TTOutput Settings");
     setMinimumSize(400, 600);
+    
+    // Setup worker thread for async operations
+    m_workerThread = new QThread(this);
+    m_worker = new TTOutputWorker();
+    m_worker->moveToThread(m_workerThread);
+    
+    // Connect worker signals
+    connect(m_worker, &TTOutputWorker::outputStarted, this, &TTOutputDock::onOutputStarted);
+    connect(m_worker, &TTOutputWorker::outputStopped, this, &TTOutputDock::onOutputStopped);
+    connect(m_worker, &TTOutputWorker::progressUpdate, this, &TTOutputDock::onProgressUpdate);
+    
+    // Connect thread management
+    connect(m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
+    
+    m_workerThread->start();
     
     setupUI();
     loadSettings();
@@ -36,10 +90,27 @@ TTOutputDock::~TTOutputDock()
 {
     saveSettings();
     
-    if (m_currentConfig) {
-        // Stop output if active
-        if (m_currentConfig->output && obs_output_active(m_currentConfig->output)) {
-            ttoutput_stop_output(m_currentConfig);
+    // Clean up worker thread
+    if (m_workerThread) {
+        m_workerThread->quit();
+        m_workerThread->wait(3000); // Wait up to 3 seconds
+    }
+    
+    // Clean up configs
+    {
+        QMutexLocker locker(&m_configMutex);
+        if (m_currentConfig) {
+            // Stop output if active
+            if (m_currentConfig->output && obs_output_active(m_currentConfig->output)) {
+                ttoutput_stop_output(m_currentConfig);
+            }
+            ttoutput_config_free(m_currentConfig);
+            m_currentConfig = nullptr;
+        }
+        
+        if (m_pendingConfig) {
+            ttoutput_config_free(m_pendingConfig);
+            m_pendingConfig = nullptr;
         }
     }
 }
@@ -409,7 +480,7 @@ void TTOutputDock::onOutputTypeChanged(int index)
 
 void TTOutputDock::onStartStopClicked()
 {
-    if (!m_isOutputActive) {
+    if (!m_isOutputActive && m_isStarting.loadRelaxed() == 0) {
         // Validate settings before starting
         if (!validateSettings()) {
             return;
@@ -421,42 +492,48 @@ void TTOutputDock::onStartStopClicked()
             return;
         }
         
-        // Start output
-        if (ttoutput_start_output(config)) {
-            m_currentConfig = config;
-            m_isOutputActive = true;
-            m_startStopButton->setText("Stop Output");
-            m_startStopButton->setStyleSheet(
-                "QPushButton { background-color: #D13438; color: #FFFFFF; border: none; padding: 10px; font-size: 14px; font-weight: bold; }"
-                "QPushButton:hover { background-color: #B02A2E; }"
-                "QPushButton:pressed { background-color: #8E2125; }"
-            );
-            m_statusLabel->setText("Running");
-            m_statusLabel->setStyleSheet("QLabel { color: #107C10; font-weight: bold; }");
-        } else {
-            ttoutput_config_free(config);
-        }
-    } else {
-        // Stop output
-        if (m_currentConfig) {
-            ttoutput_stop_output(m_currentConfig);
-            ttoutput_config_free(m_currentConfig);
-            m_currentConfig = nullptr;
+        // Set starting state
+        m_isStarting.storeRelaxed(1);
+        
+        // Store pending config
+        {
+            QMutexLocker locker(&m_configMutex);
+            if (m_pendingConfig) {
+                ttoutput_config_free(m_pendingConfig);
+            }
+            m_pendingConfig = config;
         }
         
-        m_isOutputActive = false;
-        m_startStopButton->setText("Start Output");
-        m_startStopButton->setStyleSheet(
-            "QPushButton { background-color: #107C10; color: #FFFFFF; border: none; padding: 10px; font-size: 14px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #0E6B0E; }"
-            "QPushButton:pressed { background-color: #0C5A0C; }"
-        );
-        m_statusLabel->setText("Stopped");
-        m_statusLabel->setStyleSheet("QLabel { color: #FF6B6B; font-weight: bold; }");
+        // Update UI to show starting state
+        m_startStopButton->setText("Starting...");
+        m_startStopButton->setEnabled(false);
+        m_statusLabel->setText("Starting...");
+        m_statusLabel->setStyleSheet("QLabel { color: #FFA500; font-weight: bold; }");
         m_progressBar->setValue(0);
-        m_bitrateLabel->setText("0 kbps");
-        m_droppedFramesLabel->setText("0");
-        m_cpuUsageLabel->setText("0%");
+        
+        // Start output asynchronously
+        m_worker->startOutput(config);
+        
+    } else if (m_isOutputActive && m_isStopping.loadRelaxed() == 0) {
+        // Set stopping state
+        m_isStopping.storeRelaxed(1);
+        
+        // Update UI to show stopping state
+        m_startStopButton->setText("Stopping...");
+        m_startStopButton->setEnabled(false);
+        m_statusLabel->setText("Stopping...");
+        m_statusLabel->setStyleSheet("QLabel { color: #FFA500; font-weight: bold; }");
+        
+        // Stop output asynchronously
+        ttoutput_config_t *configToStop = nullptr;
+        {
+            QMutexLocker locker(&m_configMutex);
+            configToStop = m_currentConfig;
+        }
+        
+        if (configToStop) {
+            m_worker->stopOutput(configToStop);
+        }
     }
 }
 
@@ -778,5 +855,90 @@ void TTOutputDock::saveSettings()
     if (config) {
         ttoutput_config_apply_default(config);
         ttoutput_config_free(config);
+    }
+}
+
+// Async operation callbacks
+void TTOutputDock::onOutputStarted(bool success)
+{
+    m_isStarting.storeRelaxed(0);
+    
+    if (success) {
+        // Move pending config to current config
+        {
+            QMutexLocker locker(&m_configMutex);
+            if (m_currentConfig) {
+                ttoutput_config_free(m_currentConfig);
+            }
+            m_currentConfig = m_pendingConfig;
+            m_pendingConfig = nullptr;
+        }
+        
+        m_isOutputActive = true;
+        m_startStopButton->setText("Stop Output");
+        m_startStopButton->setStyleSheet(
+            "QPushButton { background-color: #D13438; color: #FFFFFF; border: none; padding: 10px; font-size: 14px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #B02A2E; }"
+            "QPushButton:pressed { background-color: #8E2125; }"
+        );
+        m_startStopButton->setEnabled(true);
+        m_statusLabel->setText("Running");
+        m_statusLabel->setStyleSheet("QLabel { color: #107C10; font-weight: bold; }");
+    } else {
+        // Clean up pending config on failure
+        {
+            QMutexLocker locker(&m_configMutex);
+            if (m_pendingConfig) {
+                ttoutput_config_free(m_pendingConfig);
+                m_pendingConfig = nullptr;
+            }
+        }
+        
+        m_startStopButton->setText("Start Output");
+        m_startStopButton->setStyleSheet(
+            "QPushButton { background-color: #107C10; color: #FFFFFF; border: none; padding: 10px; font-size: 14px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #0E6B0E; }"
+            "QPushButton:pressed { background-color: #0C5A0C; }"
+        );
+        m_startStopButton->setEnabled(true);
+        m_statusLabel->setText("Failed to start");
+        m_statusLabel->setStyleSheet("QLabel { color: #FF6B6B; font-weight: bold; }");
+    }
+}
+
+void TTOutputDock::onOutputStopped()
+{
+    m_isStopping.storeRelaxed(0);
+    
+    // Clean up current config
+    {
+        QMutexLocker locker(&m_configMutex);
+        if (m_currentConfig) {
+            ttoutput_config_free(m_currentConfig);
+            m_currentConfig = nullptr;
+        }
+    }
+    
+    m_isOutputActive = false;
+    m_startStopButton->setText("Start Output");
+    m_startStopButton->setStyleSheet(
+        "QPushButton { background-color: #107C10; color: #FFFFFF; border: none; padding: 10px; font-size: 14px; font-weight: bold; }"
+        "QPushButton:hover { background-color: #0E6B0E; }"
+        "QPushButton:pressed { background-color: #0C5A0C; }"
+    );
+    m_startStopButton->setEnabled(true);
+    m_statusLabel->setText("Stopped");
+    m_statusLabel->setStyleSheet("QLabel { color: #FF6B6B; font-weight: bold; }");
+    m_progressBar->setValue(0);
+    m_bitrateLabel->setText("0 kbps");
+    m_droppedFramesLabel->setText("0");
+    m_cpuUsageLabel->setText("0%");
+}
+
+void TTOutputDock::onProgressUpdate(const QString &message, int progress)
+{
+    m_statusLabel->setText(message);
+    if (progress >= 0 && progress <= 100) {
+        m_progressBar->setValue(progress);
     }
 }
