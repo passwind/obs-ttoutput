@@ -240,6 +240,20 @@ bool ttoutput_start_streaming(ttoutput_config_t *config)
         return false;
     }
     
+    // Set up video mixer first (needed for encoder configuration)
+    if (!ttoutput_setup_video_mixer(config)) {
+        ttoutput_stop_streaming(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+    
+    // Set up audio mixer
+    if (!ttoutput_setup_audio_mixer(config)) {
+        ttoutput_stop_streaming(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+    
     // Create encoders
     config->video_encoder = ttoutput_create_video_encoder(config);
     config->audio_encoder = ttoutput_create_audio_encoder(config);
@@ -260,20 +274,6 @@ bool ttoutput_start_streaming(ttoutput_config_t *config)
 
     if (!ttoutput_configure_audio_encoder(config)) {
         blog(LOG_ERROR, "TTOutput: Failed to configure audio encoder");
-        ttoutput_stop_streaming(config);
-        pthread_mutex_unlock(&g_manager_data.mutex);
-        return false;
-    }
-    
-    // Set up video mixer
-    if (!ttoutput_setup_video_mixer(config)) {
-        ttoutput_stop_streaming(config);
-        pthread_mutex_unlock(&g_manager_data.mutex);
-        return false;
-    }
-    
-    // Set up audio mixer
-    if (!ttoutput_setup_audio_mixer(config)) {
         ttoutput_stop_streaming(config);
         pthread_mutex_unlock(&g_manager_data.mutex);
         return false;
@@ -320,6 +320,20 @@ bool ttoutput_start_recording(ttoutput_config_t *config)
     obs_output_update(config->output, settings);
     obs_data_release(settings);
     
+    // Set up video mixer first (needed for encoder configuration)
+    if (!ttoutput_setup_video_mixer(config)) {
+        ttoutput_stop_recording(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+    
+    // Set up audio mixer
+    if (!ttoutput_setup_audio_mixer(config)) {
+        ttoutput_stop_recording(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+    
     // Create encoders
     config->video_encoder = ttoutput_create_video_encoder(config);
     config->audio_encoder = ttoutput_create_audio_encoder(config);
@@ -340,20 +354,6 @@ bool ttoutput_start_recording(ttoutput_config_t *config)
 
     if (!ttoutput_configure_audio_encoder(config)) {
         blog(LOG_ERROR, "TTOutput: Failed to configure audio encoder");
-        ttoutput_stop_recording(config);
-        pthread_mutex_unlock(&g_manager_data.mutex);
-        return false;
-    }
-    
-    // Set up video mixer
-    if (!ttoutput_setup_video_mixer(config)) {
-        ttoutput_stop_recording(config);
-        pthread_mutex_unlock(&g_manager_data.mutex);
-        return false;
-    }
-    
-    // Set up audio mixer
-    if (!ttoutput_setup_audio_mixer(config)) {
         ttoutput_stop_recording(config);
         pthread_mutex_unlock(&g_manager_data.mutex);
         return false;
@@ -540,26 +540,61 @@ bool ttoutput_setup_video_mixer(ttoutput_config_t *config)
         return false;
     }
     
-    // Create video mixer with custom resolution
-    struct obs_video_info ovi = {0};
-    ovi.fps_num = config->video_fps;
-    ovi.fps_den = 1;
-    ovi.base_width = config->video_width;
-    ovi.base_height = config->video_height;
-    ovi.output_width = config->video_width;
-    ovi.output_height = config->video_height;
-    ovi.output_format = VIDEO_FORMAT_NV12;
-    ovi.adapter = 0;
-    ovi.gpu_conversion = true;
-    ovi.colorspace = VIDEO_CS_709;
-    ovi.range = VIDEO_RANGE_PARTIAL;
+    // Clean up existing mixer if any
+    ttoutput_cleanup_video_mixer(config);
     
-    // Create a custom video context for this output
-    // Note: This is a simplified approach. In practice, you might want to
-    // create a separate video context or use OBS's existing video system
+    // Create a custom view for selected video sources
+    config->custom_view = obs_view_create();
+    if (!config->custom_view) {
+        blog(LOG_ERROR, "TTOutput: Failed to create custom view");
+        return false;
+    }
     
-    blog(LOG_INFO, "TTOutput: Video mixer setup completed (%dx%d@%dfps)", 
-         config->video_width, config->video_height, config->video_fps);
+    // Add selected video sources to the custom view
+    int video_channel = 0;
+    for (int i = 0; i < config->source_count; i++) {
+        if (!config->sources[i].enabled) {
+            continue;
+        }
+        
+        obs_source_t *source = obs_get_source_by_name(config->sources[i].name);
+        if (!source) {
+            blog(LOG_WARNING, "TTOutput: Video source not found: %s", config->sources[i].name);
+            continue;
+        }
+        
+        uint32_t flags = obs_source_get_output_flags(source);
+        if (flags & OBS_SOURCE_VIDEO) {
+            // Add video source to next available channel
+            obs_view_set_source(config->custom_view, video_channel, source);
+            blog(LOG_INFO, "TTOutput: Added video source to custom view channel %d: %s", 
+                 video_channel, config->sources[i].name);
+            video_channel++;
+        }
+        
+        obs_source_release(source);
+    }
+    
+    // Create custom video output with the same settings as main OBS video
+    struct obs_video_info ovi;
+    if (!obs_get_video_info(&ovi)) {
+        blog(LOG_ERROR, "TTOutput: Failed to get video info");
+        obs_view_destroy(config->custom_view);
+        config->custom_view = NULL;
+        return false;
+    }
+    
+    // Create a custom video output for our view
+    config->custom_video = obs_view_add2(config->custom_view, &ovi);
+    if (!config->custom_video) {
+        blog(LOG_ERROR, "TTOutput: Failed to create custom video output");
+        obs_view_destroy(config->custom_view);
+        config->custom_view = NULL;
+        return false;
+    }
+    
+    blog(LOG_INFO, "TTOutput: Video mixer setup completed (%dx%d@%d/%dfps)", 
+         ovi.base_width, ovi.base_height, ovi.fps_num, ovi.fps_den);
     return true;
 }
 
@@ -606,8 +641,17 @@ void ttoutput_cleanup_video_mixer(ttoutput_config_t *config)
         return;
     }
     
-    // Clean up video mixer resources
-    // In a full implementation, you would clean up any custom video contexts here
+    // Clean up custom video output
+    if (config->custom_video) {
+        obs_view_remove(config->custom_view);
+        config->custom_video = NULL;
+    }
+    
+    // Clean up custom view
+    if (config->custom_view) {
+        obs_view_destroy(config->custom_view);
+        config->custom_view = NULL;
+    }
     
     blog(LOG_INFO, "TTOutput: Video mixer cleanup completed");
 }
@@ -639,21 +683,22 @@ bool ttoutput_configure_video_encoder(ttoutput_config_t *config)
         return false;
     }
     
-    // Get video output from OBS
-    video_t *video = obs_get_video();
+    // Use custom video output if available, otherwise fall back to main OBS video
+    video_t *video = config->custom_video;
     if (!video) {
-        blog(LOG_ERROR, "TTOutput: No video context available");
-        return false;
+        blog(LOG_WARNING, "TTOutput: No custom video available, using main OBS video");
+        video = obs_get_video();
+        if (!video) {
+            blog(LOG_ERROR, "TTOutput: No video context available");
+            return false;
+        }
     }
     
-    // Set video encoder to use custom video settings
+    // Set video encoder to use our custom video output
     obs_encoder_set_video(config->video_encoder, video);
     
-    // Configure encoder with selected sources
-    // This is where you would implement custom video mixing logic
-    // For now, we'll use OBS's default video output
-    
-    blog(LOG_INFO, "TTOutput: Video encoder configured");
+    blog(LOG_INFO, "TTOutput: Video encoder configured with %s video output", 
+         config->custom_video ? "custom" : "main OBS");
     return true;
 }
 

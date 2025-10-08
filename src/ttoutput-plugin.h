@@ -116,6 +116,10 @@ typedef struct {
     obs_encoder_t *audio_encoder;
     obs_service_t *service;
     size_t audio_mixer_idx;
+    
+    // Custom video mixing
+    obs_view_t *custom_view;
+    video_t *custom_video;
 } ttoutput_config_t;
 
 typedef struct {
