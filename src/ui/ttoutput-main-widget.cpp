@@ -313,14 +313,30 @@ void TTOutputMainWidget::onTabChanged(int index)
 
 void TTOutputMainWidget::loadSettings()
 {
-    // Load settings from OBS configuration
-    // This would interact with obs_data_t
+    // 从全局配置加载默认设置并应用到UI
+    ttoutput_config_t *config = ttoutput_config_get_default();
+    if (!config) {
+        // 如果没有默认配置，保持当前UI默认值
+        return;
+    }
+
+    applyConfigToUI(config);
+
+    // 释放临时配置对象
+    ttoutput_config_free(config);
 }
 
 void TTOutputMainWidget::saveSettings()
 {
-    // Save settings to OBS configuration
-    // This would interact with obs_data_t
+    // 将当前UI中的设置保存为全局默认配置
+    ttoutput_config_t *config = createConfigFromUI();
+    if (!config) {
+        return;
+    }
+
+    ttoutput_config_apply_default(config);
+
+    ttoutput_config_free(config);
 }
 
 bool TTOutputMainWidget::validateSettings()

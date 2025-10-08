@@ -141,14 +141,21 @@ void TTOutputSourceTab::applyConfig(const ttoutput_config_t *config)
     // Clear current selection
     m_sourceList->clearSelection();
     
-    // Select sources based on configuration
+    // 依据配置选择来源
     for (int i = 0; i < m_sourceList->count(); ++i) {
         QListWidgetItem *item = m_sourceList->item(i);
-        QString sourceName = item->text();
-        
-        // Check if this source is in the configuration
-        // This would need to be implemented based on how sources are stored in config
-        // For now, we'll just clear the selection
+        const QString sourceName = item->text();
+
+        for (int s = 0; s < config->source_count; ++s) {
+            if (!config->sources[s].enabled) {
+                continue;
+            }
+
+            if (sourceName == QString::fromUtf8(config->sources[s].name)) {
+                item->setSelected(true);
+                break;
+            }
+        }
     }
     
     updateSelectedSourcesLabel();
