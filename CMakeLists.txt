@@ -51,6 +51,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/ttoutput-dock.cpp
   src/ttoutput-manager.cpp
   src/ttoutput-config.cpp
+  src/ui/ttoutput-main-widget.cpp
+  src/ui/ttoutput-config-tab.cpp
+  src/ui/ttoutput-source-tab.cpp
+  src/ui/ttoutput-status-tab.cpp
+  src/ui/ttoutput-progress-dialog.cpp
 )
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
