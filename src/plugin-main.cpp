@@ -72,11 +72,9 @@ void obs_module_unload(void)
 {
     obs_log(LOG_INFO, "TTOutput plugin unloading");
     
-    // Cleanup dock widget
-    if (g_dock_widget) {
-        delete g_dock_widget;
-        g_dock_widget = nullptr;
-    }
+    // Note: Dock widget is managed by OBS frontend and cleaned up automatically
+    // during obs_shutdown(). No manual deletion needed.
+    g_dock_widget = nullptr;
     
     // Cleanup subsystems
     ttoutput_manager_cleanup();
@@ -171,10 +169,14 @@ void ttoutput_cleanup(void)
 void ttoutput_register_dock(void)
 {
     // Create dock widget
-    g_dock_widget = new TTOutputDock();
+    TTOutputDock *dock_widget = new TTOutputDock();
     
     // Register with OBS frontend using the new API
-    obs_frontend_add_dock_by_id("ttoutput_dock", "TTOutput", g_dock_widget);
+    // OBS frontend takes ownership of the widget after this call
+    obs_frontend_add_dock_by_id("ttoutput_dock", "TTOutput", dock_widget);
+    
+    // Set global pointer for reference (but OBS frontend manages the lifecycle)
+    g_dock_widget = dock_widget;
     
     obs_log(LOG_INFO, "TTOutput dock widget registered");
 }
