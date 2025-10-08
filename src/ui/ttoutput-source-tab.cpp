@@ -188,11 +188,13 @@ void TTOutputSourceTab::fillConfig(ttoutput_config_t *config) const
         
         if (source) {
             const char *source_name = obs_source_get_name(source);
-            strncpy(config->sources[sourceIndex].name, source_name, sizeof(config->sources[sourceIndex].name) - 1);
-            config->sources[sourceIndex].name[sizeof(config->sources[sourceIndex].name) - 1] = '\0';
-            config->sources[sourceIndex].enabled = true;
-            config->sources[sourceIndex].volume = 1.0f;
-            sourceIndex++;
+            if (source_name) {  // Add null check to prevent crash during destruction
+                strncpy(config->sources[sourceIndex].name, source_name, sizeof(config->sources[sourceIndex].name) - 1);
+                config->sources[sourceIndex].name[sizeof(config->sources[sourceIndex].name) - 1] = '\0';
+                config->sources[sourceIndex].enabled = true;
+                config->sources[sourceIndex].volume = 1.0f;
+                sourceIndex++;
+            }
         }
     }
     
