@@ -87,6 +87,7 @@ private:
     ttoutput_config_t *m_currentConfig;
     QTimer *m_statusTimer;
     bool m_isOutputActive;
+    bool m_isDestroying;
     
     // Async operation support
     QThread *m_workerThread;

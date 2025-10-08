@@ -56,6 +56,7 @@ TTOutputMainWidget::TTOutputMainWidget(QWidget *parent)
     , m_currentConfig(nullptr)
     , m_statusTimer(new QTimer(this))
     , m_isOutputActive(false)
+    , m_isDestroying(false)
     , m_workerThread(nullptr)
     , m_worker(nullptr)
     , m_isStarting(0)
@@ -77,6 +78,7 @@ TTOutputMainWidget::TTOutputMainWidget(QWidget *parent)
 
 TTOutputMainWidget::~TTOutputMainWidget()
 {
+    m_isDestroying = true;  // Prevent saving settings during destruction
     saveSettings();
     cleanupWorkerThread();
     
@@ -328,6 +330,11 @@ void TTOutputMainWidget::loadSettings()
 
 void TTOutputMainWidget::saveSettings()
 {
+    // Skip saving settings during destruction to prevent crashes
+    if (m_isDestroying) {
+        return;
+    }
+    
     // 将当前UI中的设置保存为全局默认配置
     ttoutput_config_t *config = createConfigFromUI();
     if (!config) {
