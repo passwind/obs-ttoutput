@@ -232,7 +232,7 @@ void TTOutputDock::setupOutputTab()
     QFormLayout *encoderLayout = new QFormLayout(m_encoderGroup);
     
     m_codecCombo = new QComboBox();
-    m_codecCombo->addItem("H.264 (x264)", "libx264");
+    m_codecCombo->addItem("H.264 (x264)", "obs_x264");
     m_codecCombo->addItem("H.265 (x265)", "libx265");
     m_codecCombo->setStyleSheet(
         "QComboBox { background-color: #3E3E42; color: #FFFFFF; border: 1px solid #5A5A5F; padding: 5px; }"

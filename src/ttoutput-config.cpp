@@ -170,7 +170,7 @@ ttoutput_config_t* ttoutput_config_create(void)
     strncpy(config->file_format, "mp4", sizeof(config->file_format) - 1);
     
     // Default video settings
-    strncpy(config->video_codec, "libx264", sizeof(config->video_codec) - 1);
+    strncpy(config->video_codec, "obs_x264", sizeof(config->video_codec) - 1);
     config->video_bitrate = 6000;
     config->video_width = 1920;
     config->video_height = 1080;

@@ -249,6 +249,21 @@ bool ttoutput_start_streaming(ttoutput_config_t *config)
         pthread_mutex_unlock(&g_manager_data.mutex);
         return false;
     }
+
+    // Configure encoders with media sources
+    if (!ttoutput_configure_video_encoder(config)) {
+        blog(LOG_ERROR, "TTOutput: Failed to configure video encoder");
+        ttoutput_stop_streaming(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+
+    if (!ttoutput_configure_audio_encoder(config)) {
+        blog(LOG_ERROR, "TTOutput: Failed to configure audio encoder");
+        ttoutput_stop_streaming(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
     
     // Set up video mixer
     if (!ttoutput_setup_video_mixer(config)) {
@@ -308,8 +323,23 @@ bool ttoutput_start_recording(ttoutput_config_t *config)
     // Create encoders
     config->video_encoder = ttoutput_create_video_encoder(config);
     config->audio_encoder = ttoutput_create_audio_encoder(config);
-    
+
     if (!config->video_encoder || !config->audio_encoder) {
+        ttoutput_stop_recording(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+
+    // Configure encoders with media sources
+    if (!ttoutput_configure_video_encoder(config)) {
+        blog(LOG_ERROR, "TTOutput: Failed to configure video encoder");
+        ttoutput_stop_recording(config);
+        pthread_mutex_unlock(&g_manager_data.mutex);
+        return false;
+    }
+
+    if (!ttoutput_configure_audio_encoder(config)) {
+        blog(LOG_ERROR, "TTOutput: Failed to configure audio encoder");
         ttoutput_stop_recording(config);
         pthread_mutex_unlock(&g_manager_data.mutex);
         return false;
