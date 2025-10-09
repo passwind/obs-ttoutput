@@ -58,21 +58,33 @@ bool ttoutput_config_init(void)
     snprintf(global_config_path, sizeof(global_config_path), 
              "%s/global.ini", g_config_data.config_dir);
     
+    blog(LOG_INFO, "TTOutput: Initializing config system with path: %s", global_config_path);
+    
     g_config_data.global_config = config_create(global_config_path);
     if (!g_config_data.global_config) {
-        blog(LOG_ERROR, "TTOutput: Failed to create global config");
+        blog(LOG_ERROR, "TTOutput: Failed to create global config at: %s", global_config_path);
         pthread_mutex_destroy(&g_config_data.mutex);
         return false;
     }
     
     // Load existing config if it exists
-    if (os_file_exists(global_config_path)) {
-        config_open(&g_config_data.global_config, global_config_path, CONFIG_OPEN_EXISTING);
+    bool file_exists = os_file_exists(global_config_path);
+    blog(LOG_INFO, "TTOutput: Config file exists: %s", file_exists ? "YES" : "NO");
+    
+    if (file_exists) {
+        int result = config_open(&g_config_data.global_config, global_config_path, CONFIG_OPEN_EXISTING);
+        if (result == CONFIG_SUCCESS) {
+            blog(LOG_INFO, "TTOutput: Successfully loaded existing config file");
+        } else {
+            blog(LOG_WARNING, "TTOutput: Failed to load existing config file (error: %d), will use defaults", result);
+        }
+    } else {
+        blog(LOG_INFO, "TTOutput: No existing config file found, will create new one when saving");
     }
     
     g_config_data.initialized = true;
     
-    blog(LOG_INFO, "TTOutput: Configuration system initialized: %s", g_config_data.config_dir);
+    blog(LOG_INFO, "TTOutput: Configuration system initialized successfully: %s", g_config_data.config_dir);
     return true;
 }
 
@@ -465,82 +477,154 @@ const char* ttoutput_config_get_dir(void)
 ttoutput_config_t* ttoutput_config_get_default(void)
 {
     if (!g_config_data.initialized || !g_config_data.global_config) {
+        blog(LOG_ERROR, "TTOutput: Config system not initialized or global config is NULL");
         return NULL;
     }
     
     pthread_mutex_lock(&g_config_data.mutex);
     
+    // Log the config file path
+    char global_config_path[512];
+    snprintf(global_config_path, sizeof(global_config_path), 
+             "%s/global.ini", g_config_data.config_dir);
+    
+    blog(LOG_INFO, "TTOutput: Loading configuration from: %s", global_config_path);
+    
+    // Check if config file exists
+    bool file_exists = os_file_exists(global_config_path);
+    blog(LOG_INFO, "TTOutput: Config file exists: %s", file_exists ? "YES" : "NO");
+    
     ttoutput_config_t *config = ttoutput_config_create();
     if (!config) {
+        blog(LOG_ERROR, "TTOutput: Failed to create config object");
         pthread_mutex_unlock(&g_config_data.mutex);
         return NULL;
     }
     
-    // Load from global config
-    config->output_type = (output_type_t)config_get_int(g_config_data.global_config, "general", "output_type");
-    
-    const char *rtmp_url = config_get_string(g_config_data.global_config, "rtmp", "url");
-    if (rtmp_url) {
-        strncpy(config->rtmp_url, rtmp_url, sizeof(config->rtmp_url) - 1);
+    // Load from global config - only override defaults if values exist in config
+    if (config_has_user_value(g_config_data.global_config, "general", "output_type")) {
+        config->output_type = (output_type_t)config_get_int(g_config_data.global_config, "general", "output_type");
+        blog(LOG_INFO, "TTOutput: Loaded output_type from config: %d", config->output_type);
+    } else {
+        blog(LOG_INFO, "TTOutput: Using default output_type: %d", config->output_type);
     }
     
-    const char *rtmp_key = config_get_string(g_config_data.global_config, "rtmp", "key");
-    if (rtmp_key) {
-        strncpy(config->rtmp_key, rtmp_key, sizeof(config->rtmp_key) - 1);
+    if (config_has_user_value(g_config_data.global_config, "rtmp", "url")) {
+        const char *rtmp_url = config_get_string(g_config_data.global_config, "rtmp", "url");
+        if (rtmp_url) {
+            strncpy(config->rtmp_url, rtmp_url, sizeof(config->rtmp_url) - 1);
+            blog(LOG_INFO, "TTOutput: Loaded RTMP URL from config: %s", rtmp_url);
+        }
+    } else {
+        blog(LOG_INFO, "TTOutput: Using default RTMP URL: %s", config->rtmp_url);
+    }
+    
+    if (config_has_user_value(g_config_data.global_config, "rtmp", "key")) {
+        const char *rtmp_key = config_get_string(g_config_data.global_config, "rtmp", "key");
+        if (rtmp_key) {
+            strncpy(config->rtmp_key, rtmp_key, sizeof(config->rtmp_key) - 1);
+            blog(LOG_INFO, "TTOutput: Loaded RTMP key from config (length: %zu)", strlen(rtmp_key));
+        }
+    } else {
+        blog(LOG_INFO, "TTOutput: Using default RTMP key (empty)");
     }
     
     const char *file_path = config_get_string(g_config_data.global_config, "file", "path");
     if (file_path) {
         strncpy(config->file_path, file_path, sizeof(config->file_path) - 1);
+        blog(LOG_INFO, "TTOutput: Loaded file path: %s", file_path);
+    } else {
+        blog(LOG_INFO, "TTOutput: No file path found in config, using default");
     }
     
     const char *file_format = config_get_string(g_config_data.global_config, "file", "format");
     if (file_format) {
         strncpy(config->file_format, file_format, sizeof(config->file_format) - 1);
+        blog(LOG_INFO, "TTOutput: Loaded file format: %s", file_format);
+    } else {
+        blog(LOG_INFO, "TTOutput: No file format found in config, using default");
     }
     
     // Video settings
     const char *video_codec = config_get_string(g_config_data.global_config, "video", "codec");
     if (video_codec) {
         strncpy(config->video_codec, video_codec, sizeof(config->video_codec) - 1);
+        blog(LOG_INFO, "TTOutput: Loaded video codec: %s", video_codec);
+    } else {
+        blog(LOG_INFO, "TTOutput: No video codec found in config, using default");
     }
     
-    config->video_bitrate = config_get_int(g_config_data.global_config, "video", "bitrate");
-    config->video_width = config_get_int(g_config_data.global_config, "video", "width");
-    config->video_height = config_get_int(g_config_data.global_config, "video", "height");
-    config->video_fps = config_get_int(g_config_data.global_config, "video", "fps");
+    if (config_has_user_value(g_config_data.global_config, "video", "bitrate")) {
+        config->video_bitrate = config_get_int(g_config_data.global_config, "video", "bitrate");
+    }
+    if (config_has_user_value(g_config_data.global_config, "video", "width")) {
+        config->video_width = config_get_int(g_config_data.global_config, "video", "width");
+    }
+    if (config_has_user_value(g_config_data.global_config, "video", "height")) {
+        config->video_height = config_get_int(g_config_data.global_config, "video", "height");
+    }
+    if (config_has_user_value(g_config_data.global_config, "video", "fps")) {
+        config->video_fps = config_get_int(g_config_data.global_config, "video", "fps");
+    }
+    blog(LOG_INFO, "TTOutput: Video settings - bitrate: %d, resolution: %dx%d, fps: %d", 
+         config->video_bitrate, config->video_width, config->video_height, config->video_fps);
     
     const char *video_preset = config_get_string(g_config_data.global_config, "video", "preset");
     if (video_preset) {
         strncpy(config->video_preset, video_preset, sizeof(config->video_preset) - 1);
+        blog(LOG_INFO, "TTOutput: Loaded video preset: %s", video_preset);
+    } else {
+        blog(LOG_INFO, "TTOutput: No video preset found in config, using default");
     }
     
     // Audio settings
-    config->audio_bitrate = config_get_int(g_config_data.global_config, "audio", "bitrate");
-    config->audio_samplerate = config_get_int(g_config_data.global_config, "audio", "samplerate");
-    config->audio_channels = config_get_int(g_config_data.global_config, "audio", "channels");
+    if (config_has_user_value(g_config_data.global_config, "audio", "bitrate")) {
+        config->audio_bitrate = config_get_int(g_config_data.global_config, "audio", "bitrate");
+    }
+    if (config_has_user_value(g_config_data.global_config, "audio", "samplerate")) {
+        config->audio_samplerate = config_get_int(g_config_data.global_config, "audio", "samplerate");
+    }
+    if (config_has_user_value(g_config_data.global_config, "audio", "channels")) {
+        config->audio_channels = config_get_int(g_config_data.global_config, "audio", "channels");
+    }
+    blog(LOG_INFO, "TTOutput: Audio settings - bitrate: %d, samplerate: %d, channels: %d", 
+         config->audio_bitrate, config->audio_samplerate, config->audio_channels);
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
+    blog(LOG_INFO, "TTOutput: Configuration loaded successfully from: %s", global_config_path);
     return config;
 }
 
 bool ttoutput_config_apply_default(ttoutput_config_t *config)
 {
     if (!config || !g_config_data.initialized || !g_config_data.global_config) {
+        blog(LOG_ERROR, "TTOutput: Cannot apply config - invalid parameters or uninitialized system");
         return false;
     }
+    
+    // Log the config file path
+    char global_config_path[512];
+    snprintf(global_config_path, sizeof(global_config_path), 
+             "%s/global.ini", g_config_data.config_dir);
+    
+    blog(LOG_INFO, "TTOutput: Saving configuration to: %s", global_config_path);
     
     pthread_mutex_lock(&g_config_data.mutex);
     
     // Save to global config
     config_set_int(g_config_data.global_config, "general", "output_type", config->output_type);
+    blog(LOG_INFO, "TTOutput: Saving output_type: %d", config->output_type);
     
     config_set_string(g_config_data.global_config, "rtmp", "url", config->rtmp_url);
     config_set_string(g_config_data.global_config, "rtmp", "key", config->rtmp_key);
+    blog(LOG_INFO, "TTOutput: Saving RTMP settings - URL: %s, Key length: %zu", 
+         config->rtmp_url, strlen(config->rtmp_key));
     
     config_set_string(g_config_data.global_config, "file", "path", config->file_path);
     config_set_string(g_config_data.global_config, "file", "format", config->file_format);
+    blog(LOG_INFO, "TTOutput: Saving file settings - Path: %s, Format: %s", 
+         config->file_path, config->file_format);
     
     config_set_string(g_config_data.global_config, "video", "codec", config->video_codec);
     config_set_int(g_config_data.global_config, "video", "bitrate", config->video_bitrate);
@@ -548,20 +632,26 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
     config_set_int(g_config_data.global_config, "video", "height", config->video_height);
     config_set_int(g_config_data.global_config, "video", "fps", config->video_fps);
     config_set_string(g_config_data.global_config, "video", "preset", config->video_preset);
+    blog(LOG_INFO, "TTOutput: Saving video settings - Codec: %s, Bitrate: %d, Resolution: %dx%d, FPS: %d, Preset: %s", 
+         config->video_codec, config->video_bitrate, config->video_width, config->video_height, 
+         config->video_fps, config->video_preset);
     
     config_set_int(g_config_data.global_config, "audio", "bitrate", config->audio_bitrate);
     config_set_int(g_config_data.global_config, "audio", "samplerate", config->audio_samplerate);
     config_set_int(g_config_data.global_config, "audio", "channels", config->audio_channels);
+    blog(LOG_INFO, "TTOutput: Saving audio settings - Bitrate: %d, Samplerate: %d, Channels: %d", 
+         config->audio_bitrate, config->audio_samplerate, config->audio_channels);
     
     // Save to file
+    blog(LOG_INFO, "TTOutput: Attempting to save config file...");
     bool success = config_save_safe(g_config_data.global_config, "tmp", NULL) == CONFIG_SUCCESS;
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
     if (success) {
-        blog(LOG_INFO, "TTOutput: Default configuration applied");
+        blog(LOG_INFO, "TTOutput: Configuration saved successfully to: %s", global_config_path);
     } else {
-        blog(LOG_ERROR, "TTOutput: Failed to apply default configuration");
+        blog(LOG_ERROR, "TTOutput: Failed to save configuration to: %s", global_config_path);
     }
     
     return success;

@@ -318,35 +318,51 @@ void TTOutputMainWidget::onTabChanged(int index)
 
 void TTOutputMainWidget::loadSettings()
 {
+    blog(LOG_INFO, "TTOutput: Starting to load settings...");
+    
     // 从全局配置加载默认设置并应用到UI
     ttoutput_config_t *config = ttoutput_config_get_default();
     if (!config) {
         // 如果没有默认配置，保持当前UI默认值
+        blog(LOG_WARNING, "TTOutput: No configuration loaded, keeping current UI defaults");
         return;
     }
 
+    blog(LOG_INFO, "TTOutput: Configuration loaded successfully, applying to UI...");
     applyConfigToUI(config);
 
     // 释放临时配置对象
     ttoutput_config_free(config);
+    blog(LOG_INFO, "TTOutput: Settings loaded and applied to UI successfully");
 }
 
 void TTOutputMainWidget::saveSettings()
 {
     // Skip saving settings during destruction to prevent crashes
     if (m_isDestroying) {
+        blog(LOG_INFO, "TTOutput: Skipping save settings during destruction");
         return;
     }
+    
+    blog(LOG_INFO, "TTOutput: Starting to save settings...");
     
     // 将当前UI中的设置保存为全局默认配置
     ttoutput_config_t *config = createConfigFromUI();
     if (!config) {
+        blog(LOG_ERROR, "TTOutput: Failed to create config from UI");
         return;
     }
 
-    ttoutput_config_apply_default(config);
+    blog(LOG_INFO, "TTOutput: Config created from UI, applying as default...");
+    bool success = ttoutput_config_apply_default(config);
 
     ttoutput_config_free(config);
+    
+    if (success) {
+        blog(LOG_INFO, "TTOutput: Settings saved successfully");
+    } else {
+        blog(LOG_ERROR, "TTOutput: Failed to save settings");
+    }
 }
 
 bool TTOutputMainWidget::validateSettings()
@@ -385,10 +401,18 @@ ttoutput_config_t* TTOutputMainWidget::createConfigFromUI()
 void TTOutputMainWidget::applyConfigToUI(const ttoutput_config_t *config)
 {
     if (!config) {
+        blog(LOG_WARNING, "TTOutput: Cannot apply NULL config to UI");
         return;
     }
+    
+    blog(LOG_INFO, "TTOutput: Applying configuration to UI components...");
+    blog(LOG_INFO, "TTOutput: Config details - Output type: %d, Video: %dx%d@%dfps %dkbps, Audio: %dkbps", 
+         config->output_type, config->video_width, config->video_height, config->video_fps, 
+         config->video_bitrate, config->audio_bitrate);
     
     // Apply configuration to UI components
     m_configTab->applyConfig(config);
     m_sourceTab->applyConfig(config);
+    
+    blog(LOG_INFO, "TTOutput: Configuration applied to UI components successfully");
 }
