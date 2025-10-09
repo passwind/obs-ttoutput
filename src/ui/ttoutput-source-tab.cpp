@@ -116,6 +116,12 @@ void TTOutputSourceTab::updateSourceList()
 void TTOutputSourceTab::onSourceSelectionChanged()
 {
     updateSelectedSourcesLabel();
+    
+    // Don't emit signals during config loading to prevent overwriting existing config
+    if (m_isLoading) {
+        return;
+    }
+    
     emit sourceSelectionChanged();
 }
 
@@ -138,6 +144,9 @@ void TTOutputSourceTab::applyConfig(const ttoutput_config_t *config)
         return;
     }
     
+    // Set loading flag to prevent signal emission during config application
+    m_isLoading = true;
+    
     // Clear current selection
     m_sourceList->clearSelection();
     
@@ -159,6 +168,9 @@ void TTOutputSourceTab::applyConfig(const ttoutput_config_t *config)
     }
     
     updateSelectedSourcesLabel();
+    
+    // Reset loading flag after config application is complete
+    m_isLoading = false;
 }
 
 void TTOutputSourceTab::fillConfig(ttoutput_config_t *config) const

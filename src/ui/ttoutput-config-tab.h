@@ -65,4 +65,7 @@ private:
     QSpinBox *m_heightSpinBox;
     QSpinBox *m_fpsSpinBox;
     QComboBox *m_presetCombo;
+    
+    // Loading state flag to prevent signal emission during config loading
+    bool m_isLoading = false;
 };

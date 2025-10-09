@@ -244,6 +244,11 @@ void TTOutputConfigTab::onBrowseFileClicked()
 
 void TTOutputConfigTab::onSettingChanged()
 {
+    // Don't emit signals during config loading to prevent overwriting existing config
+    if (m_isLoading) {
+        return;
+    }
+    
     emit configurationChanged();
 }
 
@@ -266,6 +271,9 @@ void TTOutputConfigTab::applyConfig(const ttoutput_config_t *config)
         resetToDefaults();
         return;
     }
+    
+    // Set loading flag to prevent signal emission during config application
+    m_isLoading = true;
     
     // Apply output type
     if (config->output_type == OUTPUT_TYPE_RTMP) {
@@ -312,6 +320,9 @@ void TTOutputConfigTab::applyConfig(const ttoutput_config_t *config)
     }
     
     updateVisibility();
+    
+    // Reset loading flag after config application is complete
+    m_isLoading = false;
 }
 
 void TTOutputConfigTab::fillConfig(ttoutput_config_t *config) const

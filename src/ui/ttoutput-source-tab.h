@@ -40,4 +40,7 @@ private:
     QListWidget *m_sourceList;
     QPushButton *m_refreshSourcesButton;
     QLabel *m_selectedSourcesLabel;
+    
+    // Loading state flag to prevent signal emission during config loading
+    bool m_isLoading = false;
 };
