@@ -40,14 +40,20 @@ bool ttoutput_config_init(void)
     QString configPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     configPath += "/obs-ttoutput";
     
+    blog(LOG_INFO, "TTOutput: Config directory path: %s", configPath.toUtf8().constData());
+    
     QDir configDir(configPath);
     if (!configDir.exists()) {
+        blog(LOG_INFO, "TTOutput: Config directory does not exist, creating...");
         if (!configDir.mkpath(".")) {
             blog(LOG_ERROR, "TTOutput: Failed to create config directory: %s", 
                  configPath.toUtf8().constData());
             pthread_mutex_destroy(&g_config_data.mutex);
             return false;
         }
+        blog(LOG_INFO, "TTOutput: Config directory created successfully");
+    } else {
+        blog(LOG_INFO, "TTOutput: Config directory already exists");
     }
     
     strncpy(g_config_data.config_dir, configPath.toUtf8().constData(), 
@@ -250,8 +256,14 @@ void ttoutput_config_free(ttoutput_config_t *config)
 bool ttoutput_config_save(ttoutput_config_t *config, const char *name)
 {
     if (!config || !name || !g_config_data.initialized) {
+        blog(LOG_ERROR, "TTOutput: Cannot save config - invalid parameters or uninitialized system");
         return false;
     }
+    
+    // Log the config file path
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/%s.json", g_config_data.config_dir, name);
+    blog(LOG_INFO, "TTOutput: Saving JSON configuration to: %s", config_path);
     
     pthread_mutex_lock(&g_config_data.mutex);
     
@@ -293,10 +305,7 @@ bool ttoutput_config_save(ttoutput_config_t *config, const char *name)
     }
     json["sources"] = sources;
     
-    // Save to file
-    char config_path[512];
-    snprintf(config_path, sizeof(config_path), "%s/%s.json", g_config_data.config_dir, name);
-    
+    // Save to file (reuse the path already logged above)
     QFile file(config_path);
     if (!file.open(QIODevice::WriteOnly)) {
         blog(LOG_ERROR, "TTOutput: Failed to open config file for writing: %s", config_path);
@@ -305,29 +314,36 @@ bool ttoutput_config_save(ttoutput_config_t *config, const char *name)
     }
     
     QJsonDocument doc(json);
-    file.write(doc.toJson());
+    qint64 bytesWritten = file.write(doc.toJson());
     file.close();
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
-    blog(LOG_INFO, "TTOutput: Configuration saved: %s", name);
+    if (bytesWritten > 0) {
+        blog(LOG_INFO, "TTOutput: JSON configuration saved successfully to: %s (%lld bytes)", config_path, bytesWritten);
+    } else {
+        blog(LOG_ERROR, "TTOutput: Failed to write JSON configuration to: %s", config_path);
+        return false;
+    }
     return true;
 }
 
 ttoutput_config_t* ttoutput_config_load(const char *name)
 {
     if (!name || !g_config_data.initialized) {
+        blog(LOG_ERROR, "TTOutput: Cannot load config - invalid name or uninitialized system");
         return NULL;
     }
     
-    pthread_mutex_lock(&g_config_data.mutex);
-    
     char config_path[512];
     snprintf(config_path, sizeof(config_path), "%s/%s.json", g_config_data.config_dir, name);
+    blog(LOG_INFO, "TTOutput: Loading JSON configuration from: %s", config_path);
+    
+    pthread_mutex_lock(&g_config_data.mutex);
     
     QFile file(config_path);
     if (!file.open(QIODevice::ReadOnly)) {
-        blog(LOG_WARNING, "TTOutput: Failed to open config file: %s", config_path);
+        blog(LOG_WARNING, "TTOutput: Failed to open JSON config file: %s", config_path);
         pthread_mutex_unlock(&g_config_data.mutex);
         return NULL;
     }
@@ -387,7 +403,9 @@ ttoutput_config_t* ttoutput_config_load(const char *name)
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
-    blog(LOG_INFO, "TTOutput: Configuration loaded: %s", name);
+    blog(LOG_INFO, "TTOutput: JSON configuration loaded successfully from: %s", config_path);
+    blog(LOG_INFO, "TTOutput: Loaded config - Output type: %d, Video: %dx%d@%dfps, Sources: %d", 
+         config->output_type, config->video_width, config->video_height, config->video_fps, config->source_count);
     return config;
 }
 
@@ -644,14 +662,41 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
     
     // Save to file
     blog(LOG_INFO, "TTOutput: Attempting to save config file...");
-    bool success = config_save_safe(g_config_data.global_config, "tmp", NULL) == CONFIG_SUCCESS;
+    
+    // Check if directory is writable
+    QFileInfo dirInfo(g_config_data.config_dir);
+    if (!dirInfo.isWritable()) {
+        blog(LOG_ERROR, "TTOutput: Config directory is not writable: %s", g_config_data.config_dir);
+        pthread_mutex_unlock(&g_config_data.mutex);
+        return false;
+    }
+    
+    // Check if config file exists and is writable
+    QFileInfo fileInfo(global_config_path);
+    if (fileInfo.exists() && !fileInfo.isWritable()) {
+        blog(LOG_ERROR, "TTOutput: Config file exists but is not writable: %s", global_config_path);
+        pthread_mutex_unlock(&g_config_data.mutex);
+        return false;
+    }
+    
+    int result = config_save_safe(g_config_data.global_config, "tmp", NULL);
+    bool success = (result == CONFIG_SUCCESS);
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
     if (success) {
         blog(LOG_INFO, "TTOutput: Configuration saved successfully to: %s", global_config_path);
+        
+        // Verify the file was actually created/updated
+        QFileInfo verifyInfo(global_config_path);
+        if (verifyInfo.exists()) {
+            blog(LOG_INFO, "TTOutput: Config file verified - Size: %lld bytes, Last modified: %s", 
+                 verifyInfo.size(), verifyInfo.lastModified().toString().toUtf8().constData());
+        } else {
+            blog(LOG_WARNING, "TTOutput: Config file was not created despite successful save operation");
+        }
     } else {
-        blog(LOG_ERROR, "TTOutput: Failed to save configuration to: %s", global_config_path);
+        blog(LOG_ERROR, "TTOutput: Failed to save configuration to: %s (error code: %d)", global_config_path, result);
     }
     
     return success;
