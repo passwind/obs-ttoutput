@@ -72,6 +72,11 @@ void obs_module_unload(void)
 {
     obs_log(LOG_INFO, "TTOutput plugin unloading");
     
+    // Save current configuration before cleanup
+    if (g_dock_widget) {
+        g_dock_widget->saveConfiguration();
+    }
+    
     // Note: Dock widget is managed by OBS frontend and cleaned up automatically
     // during obs_shutdown(). No manual deletion needed.
     g_dock_widget = nullptr;

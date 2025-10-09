@@ -31,6 +31,13 @@ void TTOutputDock::setupUI()
     setLayout(layout);
 }
 
+void TTOutputDock::saveConfiguration()
+{
+    if (m_mainWidget) {
+        m_mainWidget->saveSettings();
+    }
+}
+
 
 
 #include "moc_ttoutput-dock.cpp"

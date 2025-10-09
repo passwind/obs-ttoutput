@@ -12,6 +12,9 @@ class TTOutputDock : public QWidget
 public:
     explicit TTOutputDock(QWidget *parent = nullptr);
     ~TTOutputDock();
+    
+    // Save current configuration
+    void saveConfiguration();
 
 private:
     void setupUI();

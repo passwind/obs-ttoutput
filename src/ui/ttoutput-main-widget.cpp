@@ -79,7 +79,6 @@ TTOutputMainWidget::TTOutputMainWidget(QWidget *parent)
 TTOutputMainWidget::~TTOutputMainWidget()
 {
     m_isDestroying = true;  // Prevent saving settings during destruction
-    saveSettings();
     cleanupWorkerThread();
     
     // Clean up configs
@@ -147,6 +146,10 @@ void TTOutputMainWidget::setupUI()
     // Connect status tab signals
     connect(m_statusTab, &TTOutputStatusTab::startStopClicked,
             this, &TTOutputMainWidget::onStartStopClicked);
+    
+    // Auto-save configuration when it changes
+    connect(this, &TTOutputMainWidget::configurationChanged,
+            this, &TTOutputMainWidget::saveSettings);
 }
 
 void TTOutputMainWidget::setupWorkerThread()

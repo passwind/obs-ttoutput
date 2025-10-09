@@ -44,6 +44,9 @@ public:
     // Public interface for external access
     bool isOutputActive() const { return m_isOutputActive; }
     ttoutput_config_t* getCurrentConfig() const { return m_currentConfig; }
+    
+    // Public method to save current settings
+    void saveSettings();
 
 public slots:
     void onStartStopClicked();
@@ -70,7 +73,6 @@ private:
     void cleanupWorkerThread();
     
     void loadSettings();
-    void saveSettings();
     
     bool validateSettings();
     ttoutput_config_t* createConfigFromUI();
