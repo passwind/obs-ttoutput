@@ -158,7 +158,7 @@ void ttoutput_config_cleanup(void)
     // Save global config
     if (g_config_data.global_config) {
         blog(LOG_INFO, "TTOutput: Saving config during cleanup...");
-        config_save_safe(g_config_data.global_config, NULL, NULL);
+        config_save(g_config_data.global_config);
         config_close(g_config_data.global_config);
         g_config_data.global_config = NULL;
     }
@@ -711,10 +711,10 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
         return false;
     }
     
-    blog(LOG_INFO, "TTOutput: Calling config_save_safe to write to file...");
-    int result = config_save_safe(g_config_data.global_config, NULL, NULL);
+    blog(LOG_INFO, "TTOutput: Calling config_save to write to file...");
+    int result = config_save(g_config_data.global_config);
     bool success = (result == CONFIG_SUCCESS);
-    blog(LOG_INFO, "TTOutput: config_save_safe returned: %d (CONFIG_SUCCESS=%d)", result, CONFIG_SUCCESS);
+    blog(LOG_INFO, "TTOutput: config_save returned: %d (CONFIG_SUCCESS=%d)", result, CONFIG_SUCCESS);
     
     pthread_mutex_unlock(&g_config_data.mutex);
     

@@ -16,6 +16,9 @@ TTOutputDock::TTOutputDock(QWidget *parent)
 
 TTOutputDock::~TTOutputDock()
 {
+    // Save configuration before destroying the dock
+    saveConfiguration();
+    
     // Cleanup handled by Qt parent-child relationship
 }
 

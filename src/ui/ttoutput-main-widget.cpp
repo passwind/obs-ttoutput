@@ -147,9 +147,7 @@ void TTOutputMainWidget::setupUI()
     connect(m_statusTab, &TTOutputStatusTab::startStopClicked,
             this, &TTOutputMainWidget::onStartStopClicked);
     
-    // Auto-save configuration when it changes
-    connect(this, &TTOutputMainWidget::configurationChanged,
-            this, &TTOutputMainWidget::saveSettings);
+    // Note: Auto-save removed - configuration will be saved when dock is closed
 }
 
 void TTOutputMainWidget::setupWorkerThread()
