@@ -157,7 +157,8 @@ void ttoutput_config_cleanup(void)
     
     // Save global config
     if (g_config_data.global_config) {
-        config_save_safe(g_config_data.global_config, "tmp", NULL);
+        blog(LOG_INFO, "TTOutput: Saving config during cleanup...");
+        config_save_safe(g_config_data.global_config, NULL, NULL);
         config_close(g_config_data.global_config);
         g_config_data.global_config = NULL;
     }
@@ -654,34 +655,42 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
     pthread_mutex_lock(&g_config_data.mutex);
     
     // Save to global config
+    blog(LOG_INFO, "TTOutput: === Starting to write configuration data ===");
+    
+    blog(LOG_INFO, "TTOutput: Setting [general] output_type = %d", config->output_type);
     config_set_int(g_config_data.global_config, "general", "output_type", config->output_type);
-    blog(LOG_INFO, "TTOutput: Saving output_type: %d", config->output_type);
     
+    blog(LOG_INFO, "TTOutput: Setting [rtmp] url = %s", config->rtmp_url);
     config_set_string(g_config_data.global_config, "rtmp", "url", config->rtmp_url);
+    blog(LOG_INFO, "TTOutput: Setting [rtmp] key = %s", config->rtmp_key);
     config_set_string(g_config_data.global_config, "rtmp", "key", config->rtmp_key);
-    blog(LOG_INFO, "TTOutput: Saving RTMP settings - URL: %s, Key length: %zu", 
-         config->rtmp_url, strlen(config->rtmp_key));
     
+    blog(LOG_INFO, "TTOutput: Setting [file] path = %s", config->file_path);
     config_set_string(g_config_data.global_config, "file", "path", config->file_path);
+    blog(LOG_INFO, "TTOutput: Setting [file] format = %s", config->file_format);
     config_set_string(g_config_data.global_config, "file", "format", config->file_format);
-    blog(LOG_INFO, "TTOutput: Saving file settings - Path: %s, Format: %s", 
-         config->file_path, config->file_format);
     
+    blog(LOG_INFO, "TTOutput: Setting [video] codec = %s", config->video_codec);
     config_set_string(g_config_data.global_config, "video", "codec", config->video_codec);
+    blog(LOG_INFO, "TTOutput: Setting [video] bitrate = %d", config->video_bitrate);
     config_set_int(g_config_data.global_config, "video", "bitrate", config->video_bitrate);
+    blog(LOG_INFO, "TTOutput: Setting [video] width = %d", config->video_width);
     config_set_int(g_config_data.global_config, "video", "width", config->video_width);
+    blog(LOG_INFO, "TTOutput: Setting [video] height = %d", config->video_height);
     config_set_int(g_config_data.global_config, "video", "height", config->video_height);
+    blog(LOG_INFO, "TTOutput: Setting [video] fps = %d", config->video_fps);
     config_set_int(g_config_data.global_config, "video", "fps", config->video_fps);
+    blog(LOG_INFO, "TTOutput: Setting [video] preset = %s", config->video_preset);
     config_set_string(g_config_data.global_config, "video", "preset", config->video_preset);
-    blog(LOG_INFO, "TTOutput: Saving video settings - Codec: %s, Bitrate: %d, Resolution: %dx%d, FPS: %d, Preset: %s", 
-         config->video_codec, config->video_bitrate, config->video_width, config->video_height, 
-         config->video_fps, config->video_preset);
     
+    blog(LOG_INFO, "TTOutput: Setting [audio] bitrate = %d", config->audio_bitrate);
     config_set_int(g_config_data.global_config, "audio", "bitrate", config->audio_bitrate);
+    blog(LOG_INFO, "TTOutput: Setting [audio] samplerate = %d", config->audio_samplerate);
     config_set_int(g_config_data.global_config, "audio", "samplerate", config->audio_samplerate);
+    blog(LOG_INFO, "TTOutput: Setting [audio] channels = %d", config->audio_channels);
     config_set_int(g_config_data.global_config, "audio", "channels", config->audio_channels);
-    blog(LOG_INFO, "TTOutput: Saving audio settings - Bitrate: %d, Samplerate: %d, Channels: %d", 
-         config->audio_bitrate, config->audio_samplerate, config->audio_channels);
+    
+    blog(LOG_INFO, "TTOutput: === Configuration data set in memory ===");
     
     // Save to file
     blog(LOG_INFO, "TTOutput: Attempting to save config file...");
@@ -702,8 +711,10 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
         return false;
     }
     
-    int result = config_save_safe(g_config_data.global_config, "tmp", NULL);
+    blog(LOG_INFO, "TTOutput: Calling config_save_safe to write to file...");
+    int result = config_save_safe(g_config_data.global_config, NULL, NULL);
     bool success = (result == CONFIG_SUCCESS);
+    blog(LOG_INFO, "TTOutput: config_save_safe returned: %d (CONFIG_SUCCESS=%d)", result, CONFIG_SUCCESS);
     
     pthread_mutex_unlock(&g_config_data.mutex);
     
@@ -715,6 +726,27 @@ bool ttoutput_config_apply_default(ttoutput_config_t *config)
         if (verifyInfo.exists()) {
             blog(LOG_INFO, "TTOutput: Config file verified - Size: %lld bytes, Last modified: %s", 
                  verifyInfo.size(), verifyInfo.lastModified().toString().toUtf8().constData());
+            
+            // Read back the file content to verify it was written correctly
+            QFile file(global_config_path);
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&file);
+                QString content = in.readAll();
+                file.close();
+                
+                blog(LOG_INFO, "TTOutput: === Verification: File content after save ===");
+                QStringList lines = content.split('\n');
+                int lineCount = 0;
+                for (const QString &line : lines) {
+                    if (lineCount < 20 && !line.trimmed().isEmpty()) {  // Show first 20 non-empty lines
+                        blog(LOG_INFO, "TTOutput: %s", line.toUtf8().constData());
+                    }
+                    lineCount++;
+                }
+                blog(LOG_INFO, "TTOutput: === End verification content (total %lld lines) ===", (long long)lines.size());
+            } else {
+                blog(LOG_ERROR, "TTOutput: Could not read back config file for verification");
+            }
         } else {
             blog(LOG_WARNING, "TTOutput: Config file was not created despite successful save operation");
         }
