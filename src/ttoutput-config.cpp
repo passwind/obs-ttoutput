@@ -66,26 +66,42 @@ bool ttoutput_config_init(void)
     
     blog(LOG_INFO, "TTOutput: Initializing config system with path: %s", global_config_path);
     
-    g_config_data.global_config = config_create(global_config_path);
-    if (!g_config_data.global_config) {
-        blog(LOG_ERROR, "TTOutput: Failed to create global config at: %s", global_config_path);
-        pthread_mutex_destroy(&g_config_data.mutex);
-        return false;
-    }
-    
-    // Load existing config if it exists
+    // Check if config file exists first
     bool file_exists = os_file_exists(global_config_path);
     blog(LOG_INFO, "TTOutput: Config file exists: %s", file_exists ? "YES" : "NO");
     
+    // Initialize config based on file existence
+    g_config_data.global_config = NULL;
+    
     if (file_exists) {
+        // Open existing config file
         int result = config_open(&g_config_data.global_config, global_config_path, CONFIG_OPEN_EXISTING);
         if (result == CONFIG_SUCCESS) {
-            blog(LOG_INFO, "TTOutput: Successfully loaded existing config file");
+            blog(LOG_INFO, "TTOutput: Successfully opened existing config file");
+            
+            // Verify config was loaded properly by checking if it has any data
+            if (g_config_data.global_config) {
+                // Log some basic info about the loaded config
+                blog(LOG_INFO, "TTOutput: Config file loaded successfully, checking content...");
+            } else {
+                blog(LOG_WARNING, "TTOutput: Config file opened but config object is NULL");
+            }
         } else {
-            blog(LOG_WARNING, "TTOutput: Failed to load existing config file (error: %d), will use defaults", result);
+            blog(LOG_ERROR, "TTOutput: Failed to open existing config file (error: %d), creating new one", result);
+            // If opening failed, create a new config
+            g_config_data.global_config = config_create(global_config_path);
         }
     } else {
-        blog(LOG_INFO, "TTOutput: No existing config file found, will create new one when saving");
+        // Create new config file
+        blog(LOG_INFO, "TTOutput: No existing config file found, creating new one");
+        g_config_data.global_config = config_create(global_config_path);
+    }
+    
+    // Final check to ensure we have a valid config object
+    if (!g_config_data.global_config) {
+        blog(LOG_ERROR, "TTOutput: Failed to initialize global config at: %s", global_config_path);
+        pthread_mutex_destroy(&g_config_data.mutex);
+        return false;
     }
     
     g_config_data.initialized = true;
