@@ -318,6 +318,10 @@ void TTOutputMainWidget::loadSettings()
 {
     blog(LOG_INFO, "TTOutput: Starting to load settings...");
     
+    // Set loading flag to prevent any save operations during loading
+    m_isLoadingSettings = true;
+    blog(LOG_INFO, "TTOutput: Loading flag set to true, save operations will be blocked");
+    
     // 临时断开配置变更信号，防止在加载期间触发保存
     disconnect(this, &TTOutputMainWidget::configurationChanged,
                this, &TTOutputMainWidget::saveSettings);
@@ -327,6 +331,9 @@ void TTOutputMainWidget::loadSettings()
     if (!config) {
         // 如果没有默认配置，保持当前UI默认值
         blog(LOG_WARNING, "TTOutput: No configuration loaded, keeping current UI defaults");
+        // Reset loading flag before returning
+        m_isLoadingSettings = false;
+        blog(LOG_INFO, "TTOutput: Loading flag reset to false");
         // 重新连接信号
         connect(this, &TTOutputMainWidget::configurationChanged,
                 this, &TTOutputMainWidget::saveSettings);
@@ -338,6 +345,10 @@ void TTOutputMainWidget::loadSettings()
 
     // 释放临时配置对象
     ttoutput_config_free(config);
+    
+    // Reset loading flag after successful loading
+    m_isLoadingSettings = false;
+    blog(LOG_INFO, "TTOutput: Loading flag reset to false after successful loading");
     
     // 重新连接配置变更信号
     connect(this, &TTOutputMainWidget::configurationChanged,
@@ -351,6 +362,12 @@ void TTOutputMainWidget::saveSettings()
     // Skip saving settings during destruction to prevent crashes
     if (m_isDestroying) {
         blog(LOG_INFO, "TTOutput: Skipping save settings during destruction");
+        return;
+    }
+    
+    // Skip saving settings during loading to prevent overwriting config
+    if (m_isLoadingSettings) {
+        blog(LOG_INFO, "TTOutput: Skipping save settings during loading process");
         return;
     }
     

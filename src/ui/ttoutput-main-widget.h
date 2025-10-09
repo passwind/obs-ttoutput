@@ -98,4 +98,7 @@ private:
     QAtomicInt m_isStarting;
     QAtomicInt m_isStopping;
     ttoutput_config_t *m_pendingConfig;
+    
+    // Loading state flag to prevent save operations during config loading
+    bool m_isLoadingSettings = false;
 };
