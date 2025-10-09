@@ -512,6 +512,27 @@ ttoutput_config_t* ttoutput_config_get_default(void)
     bool file_exists = os_file_exists(global_config_path);
     blog(LOG_INFO, "TTOutput: Config file exists: %s", file_exists ? "YES" : "NO");
     
+    // Debug: Show actual config file content
+    if (file_exists) {
+        FILE *debug_file = fopen(global_config_path, "r");
+        if (debug_file) {
+            blog(LOG_INFO, "TTOutput: === Config file content ===");
+            char line[256];
+            int line_num = 1;
+            while (fgets(line, sizeof(line), debug_file) && line_num <= 20) {
+                // Remove newline for cleaner logging
+                size_t len = strlen(line);
+                if (len > 0 && line[len-1] == '\n') {
+                    line[len-1] = '\0';
+                }
+                blog(LOG_INFO, "TTOutput: Line %d: %s", line_num, line);
+                line_num++;
+            }
+            blog(LOG_INFO, "TTOutput: === End config file content ===");
+            fclose(debug_file);
+        }
+    }
+    
     ttoutput_config_t *config = ttoutput_config_create();
     if (!config) {
         blog(LOG_ERROR, "TTOutput: Failed to create config object");
@@ -520,13 +541,15 @@ ttoutput_config_t* ttoutput_config_get_default(void)
     }
     
     // Load from global config - only override defaults if values exist in config
+    blog(LOG_INFO, "TTOutput: Checking for config key: [general] output_type");
     if (config_has_user_value(g_config_data.global_config, "general", "output_type")) {
         config->output_type = (output_type_t)config_get_int(g_config_data.global_config, "general", "output_type");
         blog(LOG_INFO, "TTOutput: Loaded output_type from config: %d", config->output_type);
     } else {
-        blog(LOG_INFO, "TTOutput: Using default output_type: %d", config->output_type);
+        blog(LOG_INFO, "TTOutput: Key [general] output_type not found, using default: %d", config->output_type);
     }
     
+    blog(LOG_INFO, "TTOutput: Checking for config key: [rtmp] url");
     if (config_has_user_value(g_config_data.global_config, "rtmp", "url")) {
         const char *rtmp_url = config_get_string(g_config_data.global_config, "rtmp", "url");
         if (rtmp_url) {
@@ -534,7 +557,7 @@ ttoutput_config_t* ttoutput_config_get_default(void)
             blog(LOG_INFO, "TTOutput: Loaded RTMP URL from config: %s", rtmp_url);
         }
     } else {
-        blog(LOG_INFO, "TTOutput: Using default RTMP URL: %s", config->rtmp_url);
+        blog(LOG_INFO, "TTOutput: Key [rtmp] url not found, using default: %s", config->rtmp_url);
     }
     
     if (config_has_user_value(g_config_data.global_config, "rtmp", "key")) {

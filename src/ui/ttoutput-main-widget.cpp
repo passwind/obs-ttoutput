@@ -320,11 +320,18 @@ void TTOutputMainWidget::loadSettings()
 {
     blog(LOG_INFO, "TTOutput: Starting to load settings...");
     
+    // 临时断开配置变更信号，防止在加载期间触发保存
+    disconnect(this, &TTOutputMainWidget::configurationChanged,
+               this, &TTOutputMainWidget::saveSettings);
+    
     // 从全局配置加载默认设置并应用到UI
     ttoutput_config_t *config = ttoutput_config_get_default();
     if (!config) {
         // 如果没有默认配置，保持当前UI默认值
         blog(LOG_WARNING, "TTOutput: No configuration loaded, keeping current UI defaults");
+        // 重新连接信号
+        connect(this, &TTOutputMainWidget::configurationChanged,
+                this, &TTOutputMainWidget::saveSettings);
         return;
     }
 
@@ -333,6 +340,11 @@ void TTOutputMainWidget::loadSettings()
 
     // 释放临时配置对象
     ttoutput_config_free(config);
+    
+    // 重新连接配置变更信号
+    connect(this, &TTOutputMainWidget::configurationChanged,
+            this, &TTOutputMainWidget::saveSettings);
+    
     blog(LOG_INFO, "TTOutput: Settings loaded and applied to UI successfully");
 }
 
